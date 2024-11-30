@@ -9,6 +9,7 @@ import com.solana.core.Account
 import com.solana.core.PublicKey
 import com.solana.core.Transaction
 import com.solana.core.TransactionInstruction
+import com.solana.models.RpcSendTransactionConfig
 import com.solana.models.buffer.BufferInfo
 import com.solana.programs.AssociatedTokenProgram
 import com.solana.programs.SystemProgram
@@ -52,6 +53,22 @@ fun Action.sendSOL(
             emitter.onError(it)
         }
     }
+}
+
+fun Action.publishTransaction(
+    transaction: Transaction
+) = Single.create { emitter ->
+    val serialized = transaction.serialize()
+    val base64Trx: String = Base64.getEncoder().encodeToString(serialized)
+    val params = listOf(base64Trx, RpcSendTransactionConfig())
+    val onComplete: (Result<String>) -> Unit = { result ->
+        result.onSuccess {
+            emitter.onSuccess(Pair(it, encodeBase64(transaction)))
+        }.onFailure {
+            emitter.onError(it)
+        }
+    }
+    api.router.request("sendTransaction", params, String::class.java, onComplete)
 }
 
 fun Action.sendSPLTokens(

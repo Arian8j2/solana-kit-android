@@ -3,7 +3,9 @@ package io.horizontalsystems.solanakit.transactions
 import com.solana.actions.Action
 import com.solana.core.Account
 import com.solana.core.PublicKey
+import com.solana.core.SignaturePubkeyPair
 import com.solana.core.TransactionInstruction
+import com.solana.programs.SystemProgram
 import io.horizontalsystems.solanakit.SolanaKit
 import io.horizontalsystems.solanakit.core.TokenAccountManager
 import io.horizontalsystems.solanakit.database.transaction.TransactionStorage
@@ -24,6 +26,32 @@ import org.sol4k.RpcUrl
 import org.sol4k.api.Commitment
 import java.math.BigDecimal
 import java.time.Instant
+
+data class BlockData(
+    val hash: String,
+    val lastValidBlockHeight: Long
+)
+
+data class PublishedTransactionInfo(
+    val transactionHash: String,
+    val base64Encoded: String,
+)
+
+data class RawTransaction(
+    val transaction: com.solana.core.Transaction
+) {
+    fun addSignature(signerAddress: Address, signature: ByteArray?) {
+        transaction.signatures.add(
+            SignaturePubkeyPair(
+                signature = signature,
+                publicKey = signerAddress.publicKey
+            )
+        )
+    }
+
+    fun getSignatures(): List<ByteArray?> =
+        transaction.signatures.map { it.signature }
+}
 
 class TransactionManager(
     private val address: Address,
@@ -159,6 +187,50 @@ class TransactionManager(
         _transactionsFlow.tryEmit(listOf(fullTransaction))
 
         return fullTransaction
+    }
+
+    fun craftSendSolTransaction(
+        fromAddress: Address,
+        toAddress: Address,
+        amount: Long,
+        recentBlockHash: String
+    ): RawTransaction {
+        val instructions = priorityFeeInstructions()
+        val transferInstruction = SystemProgram.transfer(
+            fromAddress.publicKey,
+            toAddress.publicKey,
+            amount
+        )
+        val transaction = com.solana.core.Transaction()
+        transaction.add(*instructions.toTypedArray())
+        transaction.add(transferInstruction)
+
+        transaction.setRecentBlockHash(recentBlockHash)
+        return RawTransaction(transaction)
+    }
+
+    fun signTransaction(signerAccount: Account, rawTransaction: RawTransaction) {
+        rawTransaction.transaction.sign(signerAccount)
+    }
+
+    fun getLatestBlockData(): BlockData {
+        val connection = Connection(RpcUrl.MAINNNET)
+        val blockHash = connection.getLatestBlockhashExtended(Commitment.FINALIZED)
+        return BlockData(blockHash.blockhash, blockHash.lastValidBlockHeight)
+    }
+
+    suspend fun publish(rawTransaction: RawTransaction): PublishedTransactionInfo {
+        val transaction = rawTransaction.transaction
+        val (transactionHash, base64Encoded) = rpcAction.publishTransaction(transaction).await()
+        return PublishedTransactionInfo(
+            transactionHash = transactionHash,
+            base64Encoded = base64Encoded
+        )
+    }
+
+    fun addTransactionToStorage(transaction: FullTransaction) {
+        storage.addTransactions(listOf(transaction))
+        _transactionsFlow.tryEmit(listOf(transaction))
     }
 
     private fun priorityFeeInstructions(): List<TransactionInstruction> {

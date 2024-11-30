@@ -25,7 +25,10 @@ import io.horizontalsystems.solanakit.models.RpcSource
 import io.horizontalsystems.solanakit.network.ConnectionManager
 import io.horizontalsystems.solanakit.noderpc.ApiSyncer
 import io.horizontalsystems.solanakit.noderpc.NftClient
+import io.horizontalsystems.solanakit.transactions.BlockData
 import io.horizontalsystems.solanakit.transactions.PendingTransactionSyncer
+import io.horizontalsystems.solanakit.transactions.PublishedTransactionInfo
+import io.horizontalsystems.solanakit.transactions.RawTransaction
 import io.horizontalsystems.solanakit.transactions.SolanaFmService
 import io.horizontalsystems.solanakit.transactions.SolscanClient
 import io.horizontalsystems.solanakit.transactions.TransactionManager
@@ -183,6 +186,26 @@ class SolanaKit(
 
     suspend fun sendSpl(mintAddress: Address, toAddress: Address, amount: Long, signer: Signer): FullTransaction =
         transactionManager.sendSpl(mintAddress, toAddress, amount, signer.account)
+
+    fun craftSendSolTransaction(
+        fromAddress: Address,
+        toAddress: Address,
+        amount: Long,
+        recentBlockHash: String
+    ): RawTransaction =
+        transactionManager.craftSendSolTransaction(fromAddress, toAddress, amount, recentBlockHash)
+
+    fun signTransaction(signer: Signer, rawTransaction: RawTransaction) =
+        transactionManager.signTransaction(signer.account, rawTransaction)
+
+    fun getLatestBlockData(): BlockData =
+        transactionManager.getLatestBlockData()
+
+    suspend fun publish(rawTransaction: RawTransaction): PublishedTransactionInfo =
+        transactionManager.publish(rawTransaction)
+
+    fun addTransactionToStorage(transaction: FullTransaction) =
+        transactionManager.addTransactionToStorage(transaction)
 
     fun fungibleTokenAccounts(): List<FullTokenAccount> =
         tokenAccountManager.tokenAccounts().filter { !it.mintAccount.isNft }
